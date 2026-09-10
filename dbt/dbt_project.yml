@@ -1,0 +1,30 @@
+# Project-level config — this file IS committed to git. It has no secrets in
+# it; connection details (host/user/password) live in profiles.yml instead,
+# which is NOT committed (see ~/.dbt/profiles.yml).
+
+name: 'retail_analytics'
+version: '1.0.0'
+
+# Must match a profile name defined in profiles.yml — that's the indirection
+# that lets this file stay secret-free while still saying "connect me to Postgres".
+profile: 'retail_analytics'
+
+model-paths: ['models']
+seed-paths: ['seeds']
+test-paths: ['tests']
+macro-paths: ['macros']
+
+# Everything dbt generates at run time (compiled SQL, run artifacts) — never commit this.
+target-path: 'target'
+clean-targets:
+  - 'target'
+  - 'dbt_packages'
+
+models:
+  retail_analytics:
+    staging:
+      +materialized: view   # cheap, no storage — just a cleaned-up window on the source
+    intermediate:
+      +materialized: table  # int_sales_classified gets queried 4x downstream (once per dim + fact) — materialize once
+    marts:
+      +materialized: table  # full rebuild each run — same truncate-and-load philosophy as before

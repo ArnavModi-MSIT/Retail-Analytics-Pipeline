@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: retail_warehouse
+    description: >
+      Postgres tables written directly by the pipeline's ingestion/PySpark
+      layer (outside dbt's control) — the root of dbt's lineage graph.
+      Each source lands in its own native shape — no harmonization, no
+      quality filtering. That's all dbt's job now.
+    schema: public
+    tables:
+      - name: raw_csv_sales
+        description: >
+          Every raw Online Retail II (UCI) CSV line, type-cast only —
+          written by transform/csv_ingest.py. Includes nulls, negative
+          prices, everything. No NOT NULL constraints in the DB; dbt tests
+          report quality instead of the DB rejecting rows.
+        loaded_at_field: loaded_at
+        freshness:
+          warn_after: {count: 30, period: hour}
+          error_after: {count: 48, period: hour}
+
+      - name: raw_api_carts
+        description: >
+          Every raw DummyJSON /carts line item, in DummyJSON's own shape —
+          written by transform/load_postgres.py from transform/api_cast.py's
+          output. No Invoice/StockCode synthesis, no Country default here.
+        loaded_at_field: loaded_at
+        freshness:
+          warn_after: {count: 30, period: hour}
+          error_after: {count: 48, period: hour}

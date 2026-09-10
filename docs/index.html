@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Retail Analytics Data Pipeline — Arnav Modi</title>
-<meta name="description" content="Dual-source ETL pipeline: CSV + API ingestion, PySpark validation, Airflow orchestration, Postgres star schema, Power BI reporting.">
+<meta name="description" content="Dual-source ELT pipeline: CSV + API ingestion, PySpark type-casting, dbt transformation and star-schema modeling, Airflow orchestration, Power BI reporting.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -200,8 +200,8 @@
 <header class="hero">
   <div class="wrap">
     <div class="eyebrow">status: running &mdash; daily @ 00:00 UTC</div>
-    <h1>A retail data pipeline that ingests <span class="accent">two live sources</span>, validates every row, and never drops data silently.</h1>
-    <p class="lede">Historical CSV bulk load plus a daily incremental API feed, merged through PySpark schema validation into a Postgres star schema — orchestrated end-to-end by Airflow, reported in Power BI. Built by Arnav Modi.</p>
+    <h1>A retail data pipeline that ingests <span class="accent">two live sources</span>, transforms every row in dbt, and never drops data silently.</h1>
+    <p class="lede">Historical CSV bulk load plus a daily incremental API feed, landed untouched in Postgres and transformed end-to-end in dbt — staging, normalization, quality classification, star schema — orchestrated by Airflow, reported in Power BI. Built by Arnav Modi.</p>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/ArnavModi-MSIT/retail-analytics-pipeline" target="_blank" rel="noopener">View source →</a>
       <a class="btn btn-ghost" href="https://app.powerbi.com/view?r=eyJrIjoiYzZkMTA2MzYtNjEzZi00Y2U3LWE2N2YtNDAwZTcwNmQ4Zjg3IiwidCI6IjNiMjk5M2Q3LTQ5YmYtNGYyOS1iNzk0LWRkNTcyN2Y0NWVlMiJ9" target="_blank" rel="noopener">See the live dashboard →</a>
@@ -229,8 +229,8 @@
         </g>
         <g>
           <rect class="node-box" x="340" y="88" width="120" height="46" rx="2"/>
-          <text class="node-text" x="400" y="107" text-anchor="middle">VALIDATE</text>
-          <text class="node-sub" x="400" y="121" text-anchor="middle">pyspark · schema</text>
+          <text class="node-text" x="400" y="107" text-anchor="middle">DBT TRANSFORM</text>
+          <text class="node-sub" x="400" y="121" text-anchor="middle">staging → marts</text>
         </g>
         <g>
           <rect class="node-box" x="520" y="88" width="120" height="46" rx="2"/>
@@ -257,7 +257,7 @@
 <section id="stages">
   <div class="wrap">
     <div class="section-head"><span class="section-num">01</span><h2>Pipeline stages</h2></div>
-    <p class="section-intro">Five sequential stages, each with a single job. Order matters — validation has to happen before anything touches the warehouse.</p>
+    <p class="section-intro">Five sequential stages, each with a single job. PySpark's job ends at landing — everything past that is dbt SQL, version-controlled and tested.</p>
     <div class="stages">
       <div class="stage">
         <div class="n">01</div>
@@ -266,18 +266,18 @@
       </div>
       <div class="stage">
         <div class="n">02</div>
-        <h3>Validate</h3>
-        <p>PySpark buckets every row into valid / returns / quarantine. Nothing is silently dropped — quarantined rows are staged, not discarded.</p>
+        <h3>Land</h3>
+        <p>PySpark type-casts only — no business rules — and lands each source in its own native-shape raw Postgres table.</p>
       </div>
       <div class="stage">
         <div class="n">03</div>
-        <h3>Normalize</h3>
-        <p>The API source is remapped into the same schema shape as the CSV source, with fabricated fields explicitly documented.</p>
+        <h3>Transform (dbt)</h3>
+        <p>dbt normalizes the API source, classifies every row valid / return / quarantine, and unions both branches — all as tested SQL.</p>
       </div>
       <div class="stage">
         <div class="n">04</div>
         <h3>Orchestrate</h3>
-        <p>Airflow runs both branches in parallel, merges them, and loads a Postgres star schema — daily, with retries and failure alerting.</p>
+        <p>Airflow runs both branches in parallel, merges them, then runs dbt_run → dbt_test — daily, with retries and failure alerting.</p>
       </div>
       <div class="stage">
         <div class="n">05</div>
@@ -293,9 +293,9 @@
     <div class="section-head"><span class="section-num">02</span><h2>Data at a glance</h2></div>
     <p class="section-intro">Real counts from the last full run — both sources merged into <span class="mono">fact_sales</span>.</p>
     <div class="metrics">
-      <div class="metric"><div class="val">1,067,371</div><div class="lbl">raw CSV rows ingested</div></div>
-      <div class="metric"><div class="val green">805,620</div><div class="lbl">valid CSV rows loaded</div></div>
-      <div class="metric"><div class="val amber">22.7%</div><div class="lbl">quarantined, not dropped</div></div>
+      <div class="metric"><div class="val">1,067,371</div><div class="lbl">raw CSV rows landed</div></div>
+      <div class="metric"><div class="val green">805,620</div><div class="lbl">valid CSV rows in fact_sales</div></div>
+      <div class="metric"><div class="val amber">22.7%</div><div class="lbl">quarantined by dbt, not dropped</div></div>
       <div class="metric"><div class="val">800</div><div class="lbl">daily API rows merged</div></div>
       <div class="metric"><div class="val">4,820</div><div class="lbl">products deduplicated</div></div>
       <div class="metric"><div class="val">6,089</div><div class="lbl">unique customers</div></div>
@@ -308,7 +308,7 @@
 <section id="schema">
   <div class="wrap">
     <div class="section-head"><span class="section-num">03</span><h2>Star schema</h2></div>
-    <p class="section-intro">Four dimensions, one fact table, grain of one row per invoice line item. <span class="mono">source</span> tracks which pipeline branch each row came from.</p>
+    <p class="section-intro">Four dimensions, one fact table, grain of one row per invoice line item — all built and tested by dbt. <span class="mono">source</span> tracks which pipeline branch each row came from. Surrogate keys are deterministic hashes, not auto-increment, since dbt rebuilds every table from scratch each run.</p>
     <figure>
       <img src="assets/star-schema.png" alt="Power BI model view showing dim_date, dim_product, dim_customer, dim_country all connected to fact_sales">
       <figcaption><span class="tag">✓ verified</span> — model relationships confirmed 1:many, no bidirectional cross-filtering</figcaption>
@@ -319,10 +319,10 @@
 <section id="orchestration">
   <div class="wrap">
     <div class="section-head"><span class="section-num">04</span><h2>Orchestration</h2></div>
-    <p class="section-intro">Four tasks, two parallel branches, daily schedule, three retries, email alert on failure. Running in Docker on a custom Airflow image with a JDK installed for PySpark.</p>
+    <p class="section-intro">Six tasks, two parallel ingestion branches converging through load_postgres into dbt_run → dbt_test, daily schedule, three retries, email alert on failure. Running in Docker on a custom Airflow image with a JDK for PySpark and an isolated venv for dbt. A failed dbt test fails the run.</p>
     <figure>
-      <img src="assets/airflow-dag.png" alt="Airflow DAG graph view showing validate_schema, api_ingest, normalize_api all succeeded feeding into load_postgres">
-      <figcaption><span class="tag">✓ success</span> — validate_schema, api_ingest → normalize_api, load_postgres</figcaption>
+      <img src="assets/airflow-dag.png" alt="Airflow DAG graph view showing load_csv_raw, api_ingest, cast_api_raw, load_postgres, dbt_run, dbt_test all succeeded">
+      <figcaption><span class="tag">✓ success</span> — load_csv_raw, api_ingest → cast_api_raw, load_postgres, dbt_run, dbt_test</figcaption>
     </figure>
   </div>
 </section>
@@ -347,12 +347,16 @@
     <p class="section-intro">What's real, what's simplified, and why — documented rather than hidden.</p>
     <div class="notes">
       <div class="note">
+        <span class="k">ELT, NOT ETL</span>
+        <p>PySpark only extracts and type-casts — every raw row lands, good or bad, no <span class="mono">NOT NULL</span> constraints. dbt owns every actual decision about the data: normalization, quality classification, the star schema itself. SQL an analyst can read, not Python only an engineer can safely change.</p>
+      </div>
+      <div class="note">
         <span class="k">LOAD STRATEGY</span>
         <p>Truncate-and-load on every run, not incremental upsert. Correct for a demo pipeline at this scale; a production version would need merge/upsert logic and slowly-changing dimensions.</p>
       </div>
       <div class="note">
         <span class="k">API SOURCE GAPS</span>
-        <p><span class="mono">Country</span> and <span class="mono">Invoice</span> don't exist in the DummyJSON source — defaulted to <span class="mono">"Unknown"</span> and a synthesized <span class="mono">API-{cart_id}</span> respectively. Documented in code, not papered over.</p>
+        <p><span class="mono">Country</span> and <span class="mono">Invoice</span> don't exist in the DummyJSON source — defaulted to <span class="mono">"Unknown"</span> and a synthesized <span class="mono">API-{cart_id}</span> respectively, by a dbt model now. Documented in code, not papered over.</p>
       </div>
       <div class="note">
         <span class="k">STORAGE ABSTRACTION</span>
@@ -372,6 +376,7 @@
     <div class="stack">
       <span class="chip">Python</span>
       <span class="chip">PySpark</span>
+      <span class="chip">dbt</span>
       <span class="chip">Apache Airflow</span>
       <span class="chip">PostgreSQL</span>
       <span class="chip">Docker Compose</span>

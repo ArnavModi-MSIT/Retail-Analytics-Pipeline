@@ -1,0 +1,18 @@
+# Committed — unlike ~/.dbt/profiles.yml on a developer's own machine, a
+# container has no persistent per-developer home directory to keep secrets
+# out of, so the convention flips: commit a profiles.yml that still only
+# ever reads credentials via env_var() (same PG_* names as .env.docker),
+# and point DBT_PROFILES_DIR at this file. No secret ever lives in this repo.
+
+retail_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PG_HOST') }}"
+      user: "{{ env_var('PG_USER') }}"
+      password: "{{ env_var('PG_PASSWORD') }}"
+      port: 5432
+      dbname: "{{ env_var('PG_DB') }}"
+      schema: public
+      threads: 4

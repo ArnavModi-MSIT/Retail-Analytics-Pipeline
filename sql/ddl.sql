@@ -1,75 +1,46 @@
--- Star schema for Retail Analytics Data Pipeline
--- Grain of fact_sales: one row per Invoice line item (Invoice + StockCode)
--- Scope: valid, non-return, non-null-CustomerID transactions only.
---        Returns and quarantined rows are staged separately (parquet), not loaded here.
+-- Retail Analytics Data Pipeline — raw landing tables
+--
+-- Pure ELT: PySpark only extracts, type-casts, and lands — no business rules,
+-- no quality bucketing, no cross-source harmonization. Each source lands in
+-- its OWN native shape; forcing CSV and API into one shape was itself a
+-- transform, so that no longer happens before landing either.
+--
+-- Everything downstream (staging, intermediate normalization/classification,
+-- and the star schema itself) is built and owned by dbt — see dbt/models/.
+-- No NOT NULL constraints on data columns here: rejecting bad rows at the DB
+-- layer would just be validation hiding in a new place. dbt's tests are
+-- where data quality gets reported now.
 
 -- =========================
--- DIMENSION: dim_date
+-- RAW LANDING: raw_csv_sales
+-- One row per raw Online Retail II (UCI) CSV line, type-cast only.
 -- =========================
-CREATE TABLE dim_date (
-    date_key        INTEGER PRIMARY KEY,        -- YYYYMMDD
-    full_date       DATE NOT NULL UNIQUE,
-    year            SMALLINT NOT NULL,
-    quarter         SMALLINT NOT NULL,
-    month           SMALLINT NOT NULL,
-    month_name      VARCHAR(10) NOT NULL,
-    day             SMALLINT NOT NULL,
-    day_of_week     SMALLINT NOT NULL,           -- 1=Monday .. 7=Sunday
-    day_name        VARCHAR(10) NOT NULL,
-    is_weekend      BOOLEAN NOT NULL
-);
-
--- =========================
--- DIMENSION: dim_product
--- =========================
-CREATE TABLE dim_product (
-    product_key     SERIAL PRIMARY KEY,
-    stock_code      VARCHAR(20) NOT NULL UNIQUE,
+CREATE TABLE raw_csv_sales (
+    invoice         VARCHAR(20),
+    stock_code      VARCHAR(20),
     description     VARCHAR(255),
-    created_at      TIMESTAMP NOT NULL DEFAULT now()
-);
-
--- =========================
--- DIMENSION: dim_customer
--- =========================
-CREATE TABLE dim_customer (
-    customer_key    SERIAL PRIMARY KEY,
-    customer_id     INTEGER NOT NULL UNIQUE,     -- source CustomerID, guaranteed non-null (Option A)
-    created_at      TIMESTAMP NOT NULL DEFAULT now()
-);
-
--- =========================
--- DIMENSION: dim_country
--- =========================
-CREATE TABLE dim_country (
-    country_key     SERIAL PRIMARY KEY,
-    country_name    VARCHAR(100) NOT NULL UNIQUE
-);
-
--- =========================
--- FACT: fact_sales
--- Grain: one row per (Invoice, StockCode) line item
--- =========================
-CREATE TABLE fact_sales (
-    fact_sales_key  BIGSERIAL PRIMARY KEY,
-    invoice_no      VARCHAR(20) NOT NULL,
-    product_key     INTEGER NOT NULL REFERENCES dim_product(product_key),
-    customer_key    INTEGER NOT NULL REFERENCES dim_customer(customer_key),
-    date_key        INTEGER NOT NULL REFERENCES dim_date(date_key),
-    country_key     INTEGER NOT NULL REFERENCES dim_country(country_key),
-    invoice_datetime TIMESTAMP NOT NULL,          -- full timestamp, kept alongside date_key for intraday analysis
-    quantity        INTEGER NOT NULL,
-    unit_price      NUMERIC(10, 2) NOT NULL,
-    revenue         NUMERIC(12, 2) NOT NULL,      -- quantity * unit_price, precomputed at load time
-    source          VARCHAR(10) NOT NULL,          -- 'csv' (historical bulk) or 'api' (daily incremental)
+    quantity        INTEGER,
+    invoice_date    TIMESTAMP,
+    price           NUMERIC(10, 2),
+    customer_id     INTEGER,
+    country         VARCHAR(100),
     loaded_at       TIMESTAMP NOT NULL DEFAULT now()
 );
 
 -- =========================
--- INDEXES
+-- RAW LANDING: raw_api_carts
+-- One row per DummyJSON /carts line item, in DummyJSON's own shape —
+-- no Invoice/StockCode synthesis, no Country default. That's dbt's job.
 -- =========================
-CREATE INDEX idx_fact_sales_date ON fact_sales(date_key);
-CREATE INDEX idx_fact_sales_product ON fact_sales(product_key);
-CREATE INDEX idx_fact_sales_customer ON fact_sales(customer_key);
-CREATE INDEX idx_fact_sales_country ON fact_sales(country_key);
-CREATE INDEX idx_fact_sales_invoice ON fact_sales(invoice_no);
+CREATE TABLE raw_api_carts (
+    cart_id             INTEGER,
+    user_id             INTEGER,
+    product_id          INTEGER,
+    title               VARCHAR(255),
+    price               NUMERIC(10, 2),
+    quantity            INTEGER,
+    discount_percentage NUMERIC(5, 2),
+    discounted_total    NUMERIC(10, 2),
+    fetched_at          TIMESTAMP,
+    loaded_at           TIMESTAMP NOT NULL DEFAULT now()
+);

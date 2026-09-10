@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: dim_product
+    description: One row per stock_code. Description picked by mode (most frequent), not first/last-loaded.
+    columns:
+      - name: product_key
+        description: Surrogate key, md5 hash of stock_code.
+        tests:
+          - unique
+          - not_null
+      - name: stock_code
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_customer
+    description: One row per customer_id.
+    columns:
+      - name: customer_key
+        description: Surrogate key, md5 hash of customer_id.
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_country
+    description: One row per country.
+    columns:
+      - name: country_key
+        description: Surrogate key, md5 hash of country_name.
+        tests:
+          - unique
+          - not_null
+      - name: country_name
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_date
+    description: Calendar dimension, one row per day, generated with dbt_utils.date_spine.
+    columns:
+      - name: date_key
+        description: YYYYMMDD integer.
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_sales
+    description: One row per invoice line item, from either pipeline branch. Grain = (invoice_no, stock_code).
+    columns:
+      - name: product_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_key
+      - name: customer_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+      - name: country_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_country')
+                field: country_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: source
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['csv', 'api']

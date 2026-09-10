@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: int_api_carts_normalized
+    description: API rows reshaped into the CSV source's column shape, fabricated fields documented in the model SQL.
+
+  - name: int_sales_unioned
+    description: CSV + normalized API rows combined, pre-classification.
+
+  - name: int_sales_classified
+    description: >
+      Every unioned row, tagged with row_status (valid/return/quarantine).
+      Nothing is dropped — marts filter to row_status='valid' downstream.
+    columns:
+      - name: row_status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['valid', 'return', 'quarantine']

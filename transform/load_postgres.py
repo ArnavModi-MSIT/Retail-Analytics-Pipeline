@@ -1,18 +1,16 @@
 """
-Loads staged `valid` parquet (written by transform/schema_validation.py and
-transform/normalize_api_source.py) into the Postgres star schema:
-dim_product, dim_customer, dim_country, fact_sales.
-dim_date is pre-populated separately (sql/populate_dim_date.sql) — not touched here.
+Loads staged parquet (written by transform/csv_ingest.py and
+transform/api_cast.py) into two raw landing tables — raw_csv_sales and
+raw_api_carts. Each source keeps its own native shape; no harmonization,
+no dedup, no business rules. Everything downstream is dbt's job.
 
-Expects data/staged/valid and data/staged/api_valid to already exist —
-run validate_schema and normalize_api (Airflow tasks) or their underlying
-scripts first. Truncate-and-load for dims + fact on every run.
+Expects data/staged/csv_sales and data/staged/api_sales to already exist —
+run csv_ingest and api_cast (Airflow tasks) or their underlying scripts
+first. Truncate-and-load on every run.
 """
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
-
-from dim_product_dedup import build_dim_product
 
 import os
 import psycopg2
@@ -34,49 +32,19 @@ def write_table(df: DataFrame, table: str, mode: str = "append") -> None:
     df.write.jdbc(url=JDBC_URL, table=table, mode=mode, properties=JDBC_PROPERTIES)
 
 
-def read_table(spark: SparkSession, table: str) -> DataFrame:
-    return spark.read.jdbc(url=JDBC_URL, table=table, properties=JDBC_PROPERTIES)
-
-
-def build_dim_country(valid_df: DataFrame) -> DataFrame:
-    return (
-        valid_df.select(F.col("Country").alias("country_name"))
-        .distinct()
-    )
-
-
-def build_dim_customer(valid_df: DataFrame) -> DataFrame:
-    return (
-        valid_df.select(F.col("CustomerID").alias("customer_id"))
-        .distinct()
-    )
-
-
-def build_fact_sales(valid_df: DataFrame, dim_product: DataFrame,
-                      dim_customer: DataFrame, dim_country: DataFrame,
-                      dim_date: DataFrame) -> DataFrame:
-    df = (
-        valid_df
-        .withColumn("date_key", F.date_format("InvoiceDate", "yyyyMMdd").cast("int"))
-        .withColumn("revenue", F.round(F.col("Quantity") * F.col("Price"), 2))
-    )
-
-    df = df.join(dim_product, df.StockCode == dim_product.stock_code, "inner")
-    df = df.join(dim_customer, df.CustomerID == dim_customer.customer_id, "inner")
-    df = df.join(dim_country, df.Country == dim_country.country_name, "inner")
-    df = df.join(dim_date, df.date_key == dim_date.date_key, "inner")
-
+def to_snake_case_columns(df: DataFrame) -> DataFrame:
+    """Postgres folds unquoted identifiers to lowercase but doesn't split
+    words — 'StockCode' would land as the column 'stockcode', not
+    'stock_code'. Rename explicitly so the JDBC write matches raw_csv_sales."""
     return df.select(
-        F.col("Invoice").alias("invoice_no"),
-        F.col("product_key"),
-        F.col("customer_key"),
-        dim_date.date_key,
-        F.col("country_key"),
-        F.col("InvoiceDate").alias("invoice_datetime"),
+        F.col("Invoice").alias("invoice"),
+        F.col("StockCode").alias("stock_code"),
+        F.col("Description").alias("description"),
         F.col("Quantity").alias("quantity"),
-        F.col("Price").alias("unit_price"),
-        F.col("revenue"),
-        F.col("source"),
+        F.col("InvoiceDate").alias("invoice_date"),
+        F.col("Price").alias("price"),
+        F.col("CustomerID").alias("customer_id"),
+        F.col("Country").alias("country"),
     )
 
 
@@ -89,11 +57,7 @@ def truncate_tables():
     )
     conn.autocommit = True
     with conn.cursor() as cur:
-        # fact table first (FK dependency), then dims
-        cur.execute(
-            "TRUNCATE TABLE fact_sales, dim_product, dim_customer, "
-            "dim_country RESTART IDENTITY CASCADE;"
-        )
+        cur.execute("TRUNCATE TABLE raw_csv_sales, raw_api_carts;")
     conn.close()
 
 
@@ -107,33 +71,13 @@ def main():
         .getOrCreate()
     )
 
-    csv_valid = spark.read.parquet("data/staged/valid").withColumn("source", F.lit("csv"))
-    api_valid = spark.read.parquet("data/staged/api_valid").withColumn("source", F.lit("api"))
+    csv_sales = to_snake_case_columns(spark.read.parquet("data/staged/csv_sales"))
+    api_sales = spark.read.parquet("data/staged/api_sales")
 
-    valid_df = csv_valid.unionByName(api_valid)
-    dim_product_df = build_dim_product(valid_df)
-    write_table(dim_product_df, "dim_product")
+    write_table(csv_sales, "raw_csv_sales")
+    write_table(api_sales, "raw_api_carts")
 
-    dim_customer_df = build_dim_customer(valid_df)
-    write_table(dim_customer_df, "dim_customer")
-
-    dim_country_df = build_dim_country(valid_df)
-    write_table(dim_country_df, "dim_country")
-
-    # --- Re-read dims to get generated surrogate keys ---
-    dim_product = read_table(spark, "dim_product")
-    dim_customer = read_table(spark, "dim_customer")
-    dim_country = read_table(spark, "dim_country")
-    dim_date = read_table(spark, "dim_date").select("date_key")
-
-    # --- Fact ---
-    fact_df = build_fact_sales(valid_df, dim_product, dim_customer, dim_country, dim_date)
-    write_table(fact_df, "fact_sales")
-
-    print(f"Loaded: dim_product={dim_product_df.count()}, "
-          f"dim_customer={dim_customer_df.count()}, "
-          f"dim_country={dim_country_df.count()}, "
-          f"fact_sales={fact_df.count()}")
+    print(f"Loaded: raw_csv_sales={csv_sales.count()}, raw_api_carts={api_sales.count()}")
 
 
 if __name__ == "__main__":

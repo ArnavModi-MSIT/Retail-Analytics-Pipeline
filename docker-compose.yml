@@ -12,10 +12,12 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__DEFAULT_TIMEZONE: utc
     _PIP_ADDITIONAL_REQUIREMENTS: pyspark==3.5.1 psycopg2-binary python-dotenv
+    DBT_PROFILES_DIR: /opt/airflow/dbt/profiles
   volumes:
     - ./dags:/opt/airflow/dags
     - ./transform:/opt/airflow/transform
     - ./ingestion:/opt/airflow/ingestion
+    - ./dbt:/opt/airflow/dbt
     - ./data:/opt/airflow/data
     - airflow-logs:/opt/airflow/logs
   depends_on:
@@ -52,7 +54,7 @@ services:
     <<: *airflow-common
     command: webserver
     ports:
-      - "8080:8080"
+      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s

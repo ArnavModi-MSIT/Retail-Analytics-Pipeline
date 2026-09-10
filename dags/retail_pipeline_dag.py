@@ -1,12 +1,18 @@
 """
-Retail Analytics Data Pipeline DAG.
-Two parallel ingestion/validation branches converge into a single load:
-  - validate_schema: CSV historical bulk load -> PySpark schema validation
-  - api_ingest -> normalize_api: DummyJSON daily incremental -> schema-aligned normalization
-Both branches feed load_postgres, which merges them into the Postgres star schema.
-All four scripts run as subprocesses inside the Airflow worker container
-(transform/ and ingestion/ are mounted from the host repo), so each PySpark
-job gets its own isolated JVM gateway.
+Retail Analytics Data Pipeline DAG — pure ELT.
+Two parallel ingestion branches converge into a single load:
+  - load_csv_raw: CSV historical bulk load -> type-cast only (transform/csv_ingest.py)
+  - api_ingest -> cast_api_raw: DummyJSON daily incremental -> type-cast only (transform/api_cast.py)
+Neither branch does any business-rule transformation — no quality bucketing,
+no cross-source harmonization. Both feed load_postgres, which lands each
+source in its OWN raw table (raw_csv_sales, raw_api_carts) untouched.
+dbt owns 100% of the T: staging -> intermediate (normalization, union,
+valid/return/quarantine classification) -> marts (star schema). dbt_run
+builds it, dbt_test validates it — a failed test fails the DAG run.
+PySpark scripts run as subprocesses inside the Airflow worker's own Python env
+so each job gets its own isolated JVM gateway. dbt runs from its own venv
+(/opt/dbt-venv, built into the image) to keep its pinned deps away from
+Airflow's — see Dockerfile.
 """
 
 from datetime import datetime, timedelta
@@ -31,6 +37,27 @@ def run_script(script_path: str):
     if result.returncode != 0:
         print(result.stderr)
         raise RuntimeError(f"{script_path} failed with exit code {result.returncode}")
+
+
+DBT_BIN = "/opt/dbt-venv/bin/dbt"
+DBT_PROJECT_DIR = "/opt/airflow/dbt"
+
+
+def run_dbt(command: str):
+    """Run a dbt subcommand from dbt's own isolated venv, against the
+    project mounted at /opt/airflow/dbt. `dbt deps` first since
+    dbt_packages/ isn't committed (gitignored, like node_modules)."""
+    for cmd in (["deps"], command.split()):
+        result = subprocess.run(
+            [DBT_BIN, *cmd],
+            cwd=DBT_PROJECT_DIR,
+            capture_output=True,
+            text=True,
+        )
+        print(result.stdout)
+        if result.returncode != 0:
+            print(result.stderr)
+            raise RuntimeError(f"dbt {' '.join(cmd)} failed with exit code {result.returncode}")
 
 
 def alert_on_failure(context):
@@ -70,10 +97,10 @@ with DAG(
     tags=["retail", "pyspark", "postgres"],
 ) as dag:
 
-    validate_schema = PythonOperator(
-        task_id="validate_schema",
+    load_csv_raw = PythonOperator(
+        task_id="load_csv_raw",
         python_callable=run_script,
-        op_kwargs={"script_path": "transform/schema_validation.py"},
+        op_kwargs={"script_path": "transform/csv_ingest.py"},
     )
 
     api_ingest = PythonOperator(
@@ -82,10 +109,10 @@ with DAG(
         op_kwargs={"script_path": "ingestion/api_ingest.py"},
     )
 
-    normalize_api = PythonOperator(
-        task_id="normalize_api",
+    cast_api_raw = PythonOperator(
+        task_id="cast_api_raw",
         python_callable=run_script,
-        op_kwargs={"script_path": "transform/normalize_api_source.py"},
+        op_kwargs={"script_path": "transform/api_cast.py"},
     )
 
     load_postgres = PythonOperator(
@@ -94,5 +121,17 @@ with DAG(
         op_kwargs={"script_path": "transform/load_postgres.py"},
     )
 
-    api_ingest >> normalize_api
-    [validate_schema, normalize_api] >> load_postgres
+    dbt_run = PythonOperator(
+        task_id="dbt_run",
+        python_callable=run_dbt,
+        op_kwargs={"command": "run"},
+    )
+
+    dbt_test = PythonOperator(
+        task_id="dbt_test",
+        python_callable=run_dbt,
+        op_kwargs={"command": "test"},
+    )
+
+    api_ingest >> cast_api_raw
+    [load_csv_raw, cast_api_raw] >> load_postgres >> dbt_run >> dbt_test

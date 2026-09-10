@@ -2,9 +2,19 @@
 .env.docker
 data/
 .venv/
+.venv-dbt/
+# local machine-specific overrides (e.g. port remaps), never shared
+docker-compose.override.yml
 __pycache__/
 *.pyc
 *.pyo
 .ruff_cache/
 .pytest_cache/
 retail-pipeline-key.pem
+
+# dbt-generated artifacts — never commit compiled SQL or run logs
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+# dbt's own anonymous telemetry id, machine-local
+dbt/profiles/.user.yml

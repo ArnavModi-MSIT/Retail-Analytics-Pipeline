@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_csv_sales
+    description: >
+      Cleaned, one-to-one view over raw_csv_sales. Every raw row present —
+      no filtering. Quality bucketing happens in int_sales_classified.
+    columns:
+      - name: invoice
+        description: Invoice number. Prefix 'C' marks a return.
+
+  - name: stg_api_carts
+    description: Cleaned, one-to-one view over raw_api_carts, DummyJSON's own shape.
+    columns:
+      - name: cart_id
+        description: DummyJSON cart identifier.
