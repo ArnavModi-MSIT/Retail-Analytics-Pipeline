@@ -41,7 +41,7 @@ Orchestrated by **Airflow** (Docker, LocalExecutor) — 6 tasks, 2 parallel inge
 | Orchestrate | Airflow | Parallel branches merge before the dbt tasks |
 | Transform (staging) | dbt | Light 1:1 cleanup per source — trimming, no filtering |
 | Transform (intermediate) | dbt | API reshaped to match CSV's columns, sources unioned, every row classified `valid`/`return`/`quarantine` |
-| Transform (marts) | dbt | Dimension dedup, surrogate keys (hashed, not auto-increment), star schema built from `valid` rows only |
+| Transform (marts) | dbt | Dimension dedup, surrogate keys (hashed, not auto-increment), star schema built from `valid` rows only. `fact_sales` is incremental (append-only) — dims stay full-rebuild |
 | Test | dbt | Generic + singular tests — referential integrity, business-rule assertions, a WARN-level bound on the quarantine rate |
 | Report | Power BI | Direct Postgres connection, Import mode |
 
@@ -60,7 +60,7 @@ Orchestrated by **Airflow** (Docker, LocalExecutor) — 6 tasks, 2 parallel inge
 
 ## Star schema
 
-Four dimensions (`dim_date`, `dim_product`, `dim_customer`, `dim_country`), one fact table (`fact_sales`) at invoice-line-item grain, all built and tested by dbt from `int_sales_classified`. A `source` column on the fact table tracks which pipeline branch each row came from. Surrogate keys are deterministic hashes (`dbt_utils.generate_surrogate_key`) of the natural key, not auto-increment — dbt rebuilds every table from scratch each run, so keys can't depend on insertion order.
+Four dimensions (`dim_date`, `dim_product`, `dim_customer`, `dim_country`), one fact table (`fact_sales`) at invoice-line-item grain, all built and tested by dbt from `int_sales_classified`. A `source` column on the fact table tracks which pipeline branch each row came from. Dimension surrogate keys are deterministic hashes (`dbt_utils.generate_surrogate_key`) of the natural key, not auto-increment — dims rebuild from scratch every run, so keys can't depend on insertion order. `fact_sales` itself is incremental (`materialized='incremental'`, `append` strategy) — only rows newer than what's already loaded get processed each run, since invoice line items never change after landing.
 
 <img src="docs/assets/star-schema.png" alt="Power BI model view — star schema relationships" width="700">
 
@@ -132,7 +132,7 @@ CI runs lint, Python unit tests, DAG import validation, dbt (against a disposabl
 
 Documented deliberately, not discovered accidentally:
 
-- **Truncate-and-load, not incremental.** Every run reloads dimensions and the fact table from scratch. Correct for this scale and demo purpose; a production version would need merge/upsert logic and slowly-changing dimensions.
+- **Dimensions are still full-rebuild, not incremental.** `fact_sales` is incremental (append-only — see below); `dim_product`/`dim_customer`/`dim_country` are cheap enough (thousands of rows) that a full rebuild every run is simpler and still fast. A production version at larger dimension scale would need slowly-changing-dimension logic.
 - **API source has fabricated fields.** DummyJSON has no `Country` or invoice-style ID — defaulted to `"Unknown"` and a synthesized `API-{cart_id}` respectively. See [`dbt/models/intermediate/int_api_carts_normalized.sql`](dbt/models/intermediate/int_api_carts_normalized.sql).
 - **Storage abstraction is partially scaffolded.** A local/S3 backend interface exists ([`ingestion/storage_backend.py`](ingestion/storage_backend.py)) and is used for path resolution, but the Spark-level read/write methods aren't yet exercised end-to-end. AWS S3 integration is intentionally deferred to a later phase.
 - **API customer IDs aren't namespace-protected** against the CSV source the way `StockCode` and `Invoice` are. No collision today given current ID ranges — a known, low-risk simplification.

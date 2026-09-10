@@ -2,6 +2,14 @@
 -- rows reach the fact table — returns and quarantine stay queryable in
 -- int_sales_classified but never make it into the star schema, matching
 -- the original PySpark behavior.
+--
+-- Incremental, append-only: invoice line items never change after landing,
+-- so on every run after the first, only rows newer than what's already in
+-- this table get processed — in practice, just the new day's API rows,
+-- since the CSV historical backfill is always older than "already loaded".
+-- First deploy (or any schema/logic change to backfilled history) needs
+-- `dbt run --full-refresh --select fact_sales`.
+{{ config(materialized='incremental', incremental_strategy='append') }}
 
 with sales as (
 
@@ -18,6 +26,10 @@ with sales as (
         round(quantity * price, 2) as revenue
     from {{ ref('int_sales_classified') }}
     where row_status = 'valid'
+
+    {% if is_incremental() %}
+    and invoice_date > (select max(invoice_datetime) from {{ this }})
+    {% endif %}
 
 )
 

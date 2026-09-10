@@ -28,7 +28,9 @@ models:
     intermediate:
       +materialized: table  # int_sales_classified gets queried 4x downstream (once per dim + fact) — materialize once
     marts:
-      +materialized: table  # full rebuild each run — same truncate-and-load philosophy as before
+      +materialized: table  # dims: full rebuild each run — cheap (thousands of rows), no reason to complicate.
+      # fact_sales overrides this to incremental in its own file (see
+      # models/marts/fact_sales.sql) — the one mart big enough to benefit.
 
 # CI-only fixture data — `dbt seed` DROPS AND RECREATES these exact tables,
 # so NEVER run `dbt seed` against a profile pointed at real raw_csv_sales /

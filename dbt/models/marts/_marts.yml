@@ -50,7 +50,10 @@ models:
           - not_null
 
   - name: fact_sales
-    description: One row per invoice line item, from either pipeline branch. Grain = (invoice_no, stock_code).
+    description: >
+      One row per invoice line item, from either pipeline branch. Grain =
+      (invoice_no, stock_code). Incremental, append-only — see the model
+      SQL for why the `append` strategy fits this fact table specifically.
     columns:
       - name: product_key
         tests:
