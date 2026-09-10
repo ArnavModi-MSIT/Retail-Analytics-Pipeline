@@ -124,7 +124,7 @@ pytest tests/ -v
 cd dbt && dbt test
 ```
 
-CI runs lint, Python unit tests, DAG import validation, and a Docker build check on every push — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). (dbt tests need a live Postgres, so they're not in CI yet — run them locally or as part of the Airflow DAG's `dbt_test` task.)
+CI runs lint, Python unit tests, DAG import validation, dbt (against a disposable Postgres service container, seeded with small fixture data — see `dbt/seeds/`), and a Docker build check on every push — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 > PySpark's local worker sockets can be unreliable on native Windows (a known PySpark/Windows limitation). If `pytest` hangs or times out locally, trust CI's Ubuntu runner — the same suite passes cleanly there.
 
@@ -148,10 +148,11 @@ Python · PySpark · dbt · Apache Airflow · PostgreSQL · Docker Compose · Po
 ├── ingestion/              # API ingestion + storage backend abstraction
 ├── transform/               # PySpark ingest + type-cast (E+L only, no business rules)
 ├── dbt/                       # All transformation — staging, intermediate, marts, tests
-│   └── models/
-│       ├── staging/              # 1:1 cleanup per raw source
-│       ├── intermediate/          # normalization, union, valid/return/quarantine classification
-│       └── marts/                  # star schema (4 dims + fact_sales)
+│   ├── models/
+│   │   ├── staging/              # 1:1 cleanup per raw source
+│   │   ├── intermediate/          # normalization, union, valid/return/quarantine classification
+│   │   └── marts/                  # star schema (4 dims + fact_sales)
+│   └── seeds/                    # small fixture data — CI only, never run against real data
 ├── sql/                      # DDL (raw landing tables only), migrations
 ├── tests/                     # pytest suite (type-casting, DAG import) — dbt owns transform-logic tests
 ├── docs/                       # GitHub Pages project site

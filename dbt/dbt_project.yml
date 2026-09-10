@@ -1,6 +1,7 @@
 # Project-level config — this file IS committed to git. It has no secrets in
-# it; connection details (host/user/password) live in profiles.yml instead,
-# which is NOT committed (see ~/.dbt/profiles.yml).
+# it; connection details (host/user/password) live in profiles.yml instead —
+# ~/.dbt/profiles.yml locally (not committed), dbt/profiles/profiles.yml for
+# Docker/CI (committed, but still env_var()-driven — no secret in either).
 
 name: 'retail_analytics'
 version: '1.0.0'
@@ -28,3 +29,31 @@ models:
       +materialized: table  # int_sales_classified gets queried 4x downstream (once per dim + fact) — materialize once
     marts:
       +materialized: table  # full rebuild each run — same truncate-and-load philosophy as before
+
+# CI-only fixture data — `dbt seed` DROPS AND RECREATES these exact tables,
+# so NEVER run `dbt seed` against a profile pointed at real raw_csv_sales /
+# raw_api_carts data (i.e. never against the `dev` target). CI uses its own
+# disposable Postgres service container, so this is safe there only.
+# Explicit column_types because dbt's CSV type inference is naive — it would
+# otherwise guess invoice_date/fetched_at as text, breaking every downstream
+# timestamp operation.
+seeds:
+  retail_analytics:
+    raw_csv_sales:
+      +column_types:
+        invoice: varchar(20)
+        stock_code: varchar(20)
+        quantity: integer
+        invoice_date: timestamp
+        price: "numeric(10,2)"
+        customer_id: integer
+    raw_api_carts:
+      +column_types:
+        cart_id: integer
+        user_id: integer
+        product_id: integer
+        price: "numeric(10,2)"
+        quantity: integer
+        discount_percentage: "numeric(5,2)"
+        discounted_total: "numeric(10,2)"
+        fetched_at: timestamp

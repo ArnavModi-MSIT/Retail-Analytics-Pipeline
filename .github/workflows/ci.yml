@@ -44,11 +44,74 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run unit tests (schema validation, dedup, API normalization)
+      - name: Run unit tests (CSV/API type-casting)
         run: pytest tests/ -v --ignore=tests/test_dag_import.py
 
       - name: Validate DAG imports and structure
         run: pytest tests/test_dag_import.py -v
+
+  dbt-test:
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: retail_analytics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PG_HOST: localhost
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      PG_DB: retail_analytics
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt/profiles
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install -r dbt/requirements-dbt.txt
+
+      # Creates raw_csv_sales / raw_api_carts (empty) — dbt seed fills them
+      # with small fixture data next, never real ingestion output.
+      - name: Apply raw table DDL
+        run: |
+          python - <<'EOF'
+          import psycopg2
+          conn = psycopg2.connect(host="localhost", dbname="retail_analytics", user="postgres", password="postgres")
+          conn.autocommit = True
+          cur = conn.cursor()
+          with open("sql/ddl.sql") as f:
+              cur.execute(f.read())
+          EOF
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+
+      - name: dbt seed (fixture data — never run this against real data)
+        working-directory: dbt
+        run: dbt seed
+
+      - name: dbt run
+        working-directory: dbt
+        run: dbt run
+
+      - name: dbt test
+        working-directory: dbt
+        run: dbt test
 
   docker-build:
     runs-on: ubuntu-latest
