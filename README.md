@@ -1,28 +1,17 @@
 # Retail Analytics Data Pipeline
 
-An **ELT** pipeline, not ETL — and that distinction is the whole design. Two sources land in Postgres completely untouched, and **100% of the transformation happens after that, in dbt**: cleaning, normalization, quality classification, and the star schema itself, all as version-controlled, tested SQL. PySpark's only job is extraction and type-casting — it never makes a business decision about the data.
-
 **[Live project page →](https://arnavmodi-msit.github.io/retail-analytics-pipeline/)** &nbsp;·&nbsp; **[Live dashboard →](https://app.powerbi.com/view?r=eyJrIjoiYzZkMTA2MzYtNjEzZi00Y2U3LWE2N2YtNDAwZTcwNmQ4Zjg3IiwidCI6IjNiMjk5M2Q3LTQ5YmYtNGYyOS1iNzk0LWRkNTcyN2Y0NWVlMiJ9)**
 
 ---
 
-## Why ELT, not ETL
-
-Transform-before-load (ETL) means business rules live in Python/Spark code — outside the easy reach of SQL-literate teammates, and hard to unit-test as pure SQL. This pipeline draws the line differently:
-
-- **PySpark does E+L only.** Extraction and type-casting — the mechanical work of getting a typed column into Postgres. Every row lands, good or bad, no `NOT NULL` gatekeeping, no filtering.
-- **dbt owns every actual decision about the data.** What counts as valid vs. quarantine. How to fill in the API source's missing fields. How the dimensional model is shaped. Deterministic surrogate keys instead of auto-increment, since every table gets rebuilt from scratch on every run.
-
-That split means the transformation logic is SQL an analyst can read and dbt can test — not Python only an engineer can safely change. Nothing is silently dropped either: quarantined and return rows stay queryable in `int_sales_classified`, they just don't reach the star schema.
-
 ## What it does
 
-Two ingestion paths run independently and land in Postgres in their own native shape — no cross-source harmonization before landing:
+An ELT pipeline for retail sales data. Two independent sources land in Postgres in their own native shape, untouched:
 
 - **CSV** — [Online Retail II (UCI)](https://archive.ics.uci.org/dataset/502/online+retail+ii), ~1.07M UK e-commerce transactions, loaded as a historical bulk batch.
 - **API** — [DummyJSON `/carts`](https://dummyjson.com/carts), pulled daily as a live incremental feed.
 
-Everything past that point — reshaping the API source to match the CSV's shape, classifying every row into `valid`/`return`/`quarantine`, deduping dimensions, building the star schema — is dbt SQL.
+All transformation happens after that, entirely in dbt: cleaning, normalization, quality classification (`valid` / `return` / `quarantine`), and the star schema itself — version-controlled, tested SQL. PySpark's role is limited to extraction and type-casting. Nothing is silently dropped — quarantined and return rows stay queryable in `int_sales_classified`, they just don't reach the star schema.
 
 ## Architecture
 
@@ -128,15 +117,6 @@ CI runs lint, Python unit tests, DAG import validation, dbt (against a disposabl
 
 > PySpark's local worker sockets can be unreliable on native Windows (a known PySpark/Windows limitation). If `pytest` hangs or times out locally, trust CI's Ubuntu runner — the same suite passes cleanly there.
 
-## Known limitations
-
-Documented deliberately, not discovered accidentally:
-
-- **Dimensions are still full-rebuild, not incremental.** `fact_sales` is incremental (append-only — see below); `dim_product`/`dim_customer`/`dim_country` are cheap enough (thousands of rows) that a full rebuild every run is simpler and still fast. A production version at larger dimension scale would need slowly-changing-dimension logic.
-- **API source has fabricated fields.** DummyJSON has no `Country` or invoice-style ID — defaulted to `"Unknown"` and a synthesized `API-{cart_id}` respectively. See [`dbt/models/intermediate/int_api_carts_normalized.sql`](dbt/models/intermediate/int_api_carts_normalized.sql).
-- **Storage abstraction is partially scaffolded.** A local/S3 backend interface exists ([`ingestion/storage_backend.py`](ingestion/storage_backend.py)) and is used for path resolution, but the Spark-level read/write methods aren't yet exercised end-to-end. AWS S3 integration is intentionally deferred to a later phase.
-- **API customer IDs aren't namespace-protected** against the CSV source the way `StockCode` and `Invoice` are. No collision today given current ID ranges — a known, low-risk simplification.
-
 ## Tech stack
 
 Python · PySpark · dbt · Apache Airflow · PostgreSQL · Docker Compose · Power BI · GitHub Actions · pytest · ruff
@@ -160,7 +140,3 @@ Python · PySpark · dbt · Apache Airflow · PostgreSQL · Docker Compose · Po
 ├── Dockerfile               # Airflow + JDK 17 (PySpark) + isolated dbt venv
 └── .github/workflows/ci.yml
 ```
-
-## Author
-
-**Arnav Modi** — B.Tech Information Technology, Maharaja Surajmal Institute of Technology

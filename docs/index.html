@@ -150,12 +150,6 @@
   .embed-live-tag::before{content:''; width:7px; height:7px; border-radius:50%; background:var(--green-bright); box-shadow:0 0 6px rgba(31,169,104,0.5); animation:blink 1.8s ease-in-out infinite;}
   @keyframes blink{0%,100%{opacity:1;} 50%{opacity:0.35;}}
 
-  /* field notes */
-  .notes{border-left:2px solid var(--amber-bg); padding-left:20px; display:flex; flex-direction:column; gap:18px;}
-  .note{font-size:14.5px;}
-  .note .k{font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--amber); display:block; margin-bottom:4px; letter-spacing:0.04em;}
-  .note p{color:var(--ink-dim);}
-
   /* stack strip */
   .stack{display:flex; flex-wrap:wrap; gap:10px;}
   .chip{
@@ -193,7 +187,6 @@
       <a href="#data">Data</a>
       <a href="#orchestration">Orchestration</a>
       <a href="#reporting">Reporting</a>
-      <a href="#notes">Field Notes</a>
     </div>
   </div>
 </nav>
@@ -353,38 +346,9 @@
   </div>
 </section>
 
-<section id="notes">
-  <div class="wrap">
-    <div class="section-head"><span class="section-num">06</span><h2>Field notes</h2></div>
-    <p class="section-intro">What's real, what's simplified, and why — documented rather than hidden.</p>
-    <div class="notes">
-      <div class="note">
-        <span class="k">ELT, NOT ETL</span>
-        <p>PySpark only extracts and type-casts — every raw row lands, good or bad, no <span class="mono">NOT NULL</span> constraints. dbt owns every actual decision about the data: normalization, quality classification, the star schema itself. SQL an analyst can read, not Python only an engineer can safely change.</p>
-      </div>
-      <div class="note">
-        <span class="k">LOAD STRATEGY</span>
-        <p>Truncate-and-load on every run, not incremental upsert. Correct for a demo pipeline at this scale; a production version would need merge/upsert logic and slowly-changing dimensions.</p>
-      </div>
-      <div class="note">
-        <span class="k">API SOURCE GAPS</span>
-        <p><span class="mono">Country</span> and <span class="mono">Invoice</span> don't exist in the DummyJSON source — defaulted to <span class="mono">"Unknown"</span> and a synthesized <span class="mono">API-{cart_id}</span> respectively, by a dbt model now. Documented in code, not papered over.</p>
-      </div>
-      <div class="note">
-        <span class="k">STORAGE ABSTRACTION</span>
-        <p>A local/S3 storage backend interface exists and is used for path resolution, but the Spark-level read/write methods are scaffolded, not yet exercised end-to-end. AWS integration is deliberately deferred to a later phase.</p>
-      </div>
-      <div class="note">
-        <span class="k">CUSTOMER ID OVERLAP</span>
-        <p>API-source customer IDs aren't namespace-protected against the CSV source the way <span class="mono">StockCode</span> and <span class="mono">Invoice</span> are. No collision today given the current ID ranges — a known, low-risk simplification.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section id="stack">
   <div class="wrap">
-    <div class="section-head"><span class="section-num">07</span><h2>Stack</h2></div>
+    <div class="section-head"><span class="section-num">06</span><h2>Stack</h2></div>
     <div class="stack">
       <span class="chip">Python</span>
       <span class="chip">PySpark</span>
