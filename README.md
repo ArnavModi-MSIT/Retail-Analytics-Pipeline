@@ -1,7 +1,5 @@
 # Retail Analytics Data Pipeline
 
-[![CI](https://github.com/ArnavModi-MSIT/retail-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ArnavModi-MSIT/retail-analytics-pipeline/actions/workflows/ci.yml)
-
 An **ELT** pipeline, not ETL — and that distinction is the whole design. Two sources land in Postgres completely untouched, and **100% of the transformation happens after that, in dbt**: cleaning, normalization, quality classification, and the star schema itself, all as version-controlled, tested SQL. PySpark's only job is extraction and type-casting — it never makes a business decision about the data.
 
 **[Live project page →](https://arnavmodi-msit.github.io/retail-analytics-pipeline/)** &nbsp;·&nbsp; **[Live dashboard →](https://app.powerbi.com/view?r=eyJrIjoiYzZkMTA2MzYtNjEzZi00Y2U3LWE2N2YtNDAwZTcwNmQ4Zjg3IiwidCI6IjNiMjk5M2Q3LTQ5YmYtNGYyOS1iNzk0LWRkNTcyN2Y0NWVlMiJ9)**
